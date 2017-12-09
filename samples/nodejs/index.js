@@ -41,6 +41,10 @@ let resources = {
         method: 'get',
         path: '/accounts/v1/balance-history?date_from=20170623'
     },
+    rewards: {
+        method: 'get',
+        path: '/rewards/v1/balance'
+    },
     history: {
         method: 'get',
         path: '/accounts/v1/transaction-history'
@@ -83,37 +87,7 @@ let show = (...messages) => {
     console.log(messages);
 };
 
-let execute_api = name => {
-    let resource = resources[name];
-    show(`EXECUTING ${name}`);
-    let action =
-        request
-            [resource.method](`${api_url}${resource.path}`)
-            .set('developer-key', developer_key)
-            .set('Authorization', access_token);
-
-    if ('headers' in resource)
-        for (let key in resource.headers)
-            action.set(key, resource.headers[key]);
-
-    if ('data' in resource)
-        action.send(resource.data);
-
-    show(action);
-
-    action.end((err, res) => {
-        if (err) {
-            show(err);
-        }
-        else {
-            show(res.body);
-
-            if ('security_message' in res.body) {
-                resources.tef_confirm.headers.security_response = res.body.security_message
-            }
-        }
-    });
-};
+let execute_api = name => callResource(name);
 
 //
 // OAuth
@@ -159,6 +133,57 @@ app.get('/callback', (req, res) => {
             res.send('<script>window.close();</script>');
         });
 });
+
+
+// Create HTTP endpoints
+for (let resource in resources) {
+    createResource(resource);
+}
+
+function createResource(name) {
+    app.get(`/${name}`, (req, response) => {
+        callResource(name)
+            .then(
+            body => response.send(body),
+            err => response.send({ error: 'not authenticated' }));
+    });
+}
+
+function callResource(name) {
+    return new Promise((resolve, reject) => {
+        let resource = resources[name];
+        show(`EXECUTING - req - ${name}`);
+        let action =
+            request
+            [resource.method](`${api_url}${resource.path}`)
+                .set('developer-key', developer_key)
+                .set('Authorization', access_token);
+
+        if ('headers' in resource)
+            for (let key in resource.headers)
+                action.set(key, resource.headers[key]);
+
+        if ('data' in resource)
+            action.send(resource.data);
+
+        show(action);
+
+        action.end((err, res) => {
+            if (err) {
+                show(err);
+                reject(err);
+            }
+            else {
+                show(res.body);
+                resolve(res.body);
+
+                if ('security_message' in res.body) {
+                    resources.tef_confirm.headers.security_response = res.body.security_message
+                }
+            }
+        });
+    });
+}
 
 io.on('connection', socket => {
     socket.on('operation', operation => {
